@@ -1,0 +1,12 @@
+CompileFlags:
+  Add:
+    - -I/usr/include/efi
+    - -I/usr/include/efi/x86_64
+    - -DEFI_FUNCTION_WRAPPER
+    - -fno-stack-protector
+    - -fshort-wchar
+    - -mno-red-zone
+
+Diagnostics:
+  Suppress:
+    - unused-function   # suppresses some EFI warnings
