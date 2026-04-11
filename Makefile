@@ -18,8 +18,8 @@ EFI_CRT0 := $(EFI_LIBS)/crt0-efi-$(ARCH).o
 EFI_LDS := $(EFI_LIBS)/elf_$(ARCH)_efi.lds
 
 # Tools
-CC      := gcc
-LD      := ld
+CC := gcc
+LD := ld
 OBJCOPY := objcopy
 
 # Compiler flags
@@ -32,7 +32,8 @@ CFLAGS := \
     -I$(EFI_INCLUDE) \
     -I$(EFI_INCLUDE)/$(EFI_ARCH) \
     -DEFI_FUNCTION_WRAPPER \
-    -Wall -Wextra
+    -Wall -Wextra \
+    -MP -MD # For deps
 
 # Linker flags
 LDFLAGS := \
