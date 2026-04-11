@@ -2,12 +2,9 @@
 
 set -e
 
-DIR="fs"          # ← Change this
-IMAGE="kernel.img"             # Output image name
-SIZE_MB=64                  # Size in MB (increase as needed)
-
-# Create FAT32 image and copy directory
-echo "Creating ${SIZE_MB}MB FAT32 image from ${DIR}..."
+DIR='boot'
+IMAGE='bin/kernel.img'
+SIZE_MB=64
 
 # Create blank image
 dd if=/dev/zero of="$IMAGE" bs=1M count=$SIZE_MB status=progress
@@ -24,5 +21,3 @@ sudo mount -o loop "$IMAGE" "$MNT_DIR"
 sudo cp -r "$DIR"/* "$MNT_DIR"
 sudo umount "$MNT_DIR"
 rmdir "$MNT_DIR"
-
-echo "Done! Image created: $IMAGE"

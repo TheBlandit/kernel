@@ -2,20 +2,20 @@
 # EFI Application Makefile - Multi-source (src/ → build/)
 # =============================================
 
-ARCH      := x86_64
-TARGET    := main
-
+ARCH := x86_64
+TARGET := main
 # Directories
-SRC_DIR   := src
+SRC_DIR := src
 BUILD_DIR := build
+BIN_DIR := bin
 
 # gnu-efi paths (adjust if needed)
 EFI_INCLUDE := /usr/include/efi
-EFI_LIBS    := /usr/lib
+EFI_LIBS := /usr/lib
 
-EFI_ARCH    := $(ARCH)
-EFI_CRT0    := $(EFI_LIBS)/crt0-efi-$(ARCH).o
-EFI_LDS     := $(EFI_LIBS)/elf_$(ARCH)_efi.lds
+EFI_ARCH := $(ARCH)
+EFI_CRT0 := $(EFI_LIBS)/crt0-efi-$(ARCH).o
+EFI_LDS := $(EFI_LIBS)/elf_$(ARCH)_efi.lds
 
 # Tools
 CC      := gcc
@@ -53,27 +53,28 @@ OBJCOPY_FLAGS := \
 
 # =============================================
 # Automatic source detection
-SRCS := $(wildcard $(SRC_DIR)/*.c)
+SRCS := $(shell find $(SRC_DIR) -type f -name '*.c')
 OBJS := $(patsubst $(SRC_DIR)/%.c, $(BUILD_DIR)/%.o, $(SRCS))
 
 # =============================================
 
-all: $(TARGET).efi
+all: $(BIN_DIR)/$(TARGET).efi
 
-# Create build directory
-$(BUILD_DIR):
+# Create build + bin directories
+$(BUILD_DIR) $(BIN_DIR):
 	mkdir -p $@
 
 # Compile each .c file into build/ directory
 $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c | $(BUILD_DIR)
+	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $< -o $@
 
 # Link all objects into .so
-$(BUILD_DIR)/$(TARGET).so: $(OBJS)
+$(BIN_DIR)/$(TARGET).so: $(OBJS) | $(BIN_DIR)
 	$(LD) $^ $(LDFLAGS) -lgnuefi -lefi -o $@
 
 # Convert to EFI executable
-$(BUILD_DIR)/$(TARGET).efi: $(BUILD_DIR)/$(TARGET).so
+$(BIN_DIR)/$(TARGET).efi: $(BIN_DIR)/$(TARGET).so | $(BIN_DIR)
 	$(OBJCOPY) $(OBJCOPY_FLAGS) $< $@
 
 # ====================== QEMU Run Targets ======================
@@ -82,9 +83,9 @@ OVMF_CODE := /usr/share/OVMF/x64/OVMF_CODE.4m.fd
 OVMF_VARS := OVMF_VARS.fd
 BOOT_DIR := boot
 
-run: $(BUILD_DIR)/$(TARGET).efi $(OVMF_VARS)
+run: $(BIN_DIR)/$(TARGET).efi $(OVMF_VARS)
 	mkdir -p $(BOOT_DIR)/EFI/BOOT
-	cp $(BUILD_DIR)/$(TARGET).efi $(BOOT_DIR)/EFI/BOOT/BOOTX64.EFI
+	cp $(BIN_DIR)/$(TARGET).efi $(BOOT_DIR)/EFI/BOOT/BOOTX64.EFI
 
 	qemu-system-x86_64 \
 		-m 512M \
@@ -99,6 +100,6 @@ $(OVMF_VARS):
 	cp /usr/share/OVMF/x64/OVMF_VARS.4m.fd $@
 
 clean:
-	rm -rf $(BUILD_DIR) *.so *.efi *.fd $(BOOT_DIR) fat.img 
+	rm -rf $(BUILD_DIR) $(BIN_DIR) *.fd $(BOOT_DIR)
 
 .PHONY: all clean
