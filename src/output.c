@@ -11,12 +11,12 @@ static uint32_t char_w;
 static uint32_t char_h;
 static uint32_t pitch;
 static EFI_GRAPHICS_PIXEL_FORMAT format;
+
 static uint32_t cursor_x = 0;
 
 const uint32_t CHAR_H = 16;
 const uint32_t CHAR_W = 9;
-
-const uint32_t BACKGROUND = 0x101010;
+const uint32_t BACKGROUND = 0x00101010;
 
 void output_init(
     uint32_t *nbuffer,

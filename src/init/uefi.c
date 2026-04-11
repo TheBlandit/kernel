@@ -3,11 +3,11 @@
 #include <stdint.h>
 #include "uefi.h"
 #include "../output.h"
+#include "uefi_helper.h"
 
 static EFI_STATUS init_uefi_screen(EFI_SYSTEM_TABLE *SystemTable);
 static EFI_STATUS init_gop(EFI_SYSTEM_TABLE *SystemTable);
 static EFI_STATUS exit_boot(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable);
-static void loop(EFI_SYSTEM_TABLE *SystemTable);
 
 EFI_STATUS init_uefi(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     EFI_STATUS Status;
@@ -17,8 +17,6 @@ EFI_STATUS init_uefi(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     Status = init_uefi_screen(SystemTable);
     if (EFI_ERROR(Status))
         return Status;
-
-    loop(SystemTable);
 
     Status = init_gop(SystemTable);
     if (EFI_ERROR(Status))
@@ -79,8 +77,11 @@ static EFI_STATUS exit_boot(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTabl
 
 static EFI_STATUS init_uefi_screen(EFI_SYSTEM_TABLE *SystemTable) {
     EFI_STATUS Status;
+
     Status = uefi_call_wrapper(SystemTable->ConOut->ClearScreen, 1, SystemTable->ConOut);
-    if (Status) return Status;
+    if (EFI_ERROR(Status))
+        return Status;
+
     return uefi_call_wrapper(SystemTable->ConOut->EnableCursor, 2, SystemTable->ConOut, TRUE);
 }
 
@@ -91,24 +92,50 @@ static EFI_STATUS init_gop(EFI_SYSTEM_TABLE *SystemTable) {
 
     // Locate GOP
     Status = uefi_call_wrapper(SystemTable->BootServices->LocateHandleBuffer, 3, ByProtocol, &gEfiGraphicsOutputProtocolGuid, NULL, &HandleCount, &HandleBuffer);
-    if (Status) return Status;
+    if (EFI_ERROR(Status))
+        return Status;
 
     EFI_GRAPHICS_OUTPUT_PROTOCOL *GOP;
     Status = uefi_call_wrapper(SystemTable->BootServices->HandleProtocol, 3, HandleBuffer[0], &gEfiGraphicsOutputProtocolGuid, (void**)&GOP);
-    if (Status) return Status;
+    if (EFI_ERROR(Status))
+        return Status;
 
+    Print(L"Output options:\n");
 
-    // Try to find a good mode (e.g. 1920x1080 or highest)
     for (UINT32 i = 0; i < GOP->Mode->MaxMode; i++) {
         EFI_GRAPHICS_OUTPUT_MODE_INFORMATION *Info;
         UINTN SizeOfInfo;
         Status = uefi_call_wrapper(GOP->QueryMode, 4, GOP, i, &SizeOfInfo, &Info);
-        if (Status) return Status;
+        if (EFI_ERROR(Status))
+            return Status;
 
-        if (Info->HorizontalResolution >= 1024 && Info->VerticalResolution >= 768) {
-            Status = uefi_call_wrapper(GOP->SetMode, 2, GOP, i);
-            break;
+        Print(L"%d: %dx%d\n", i, Info->HorizontalResolution, Info->VerticalResolution);
+    }
+
+    CHAR16 line[255];
+    CHAR16 test[16];
+    uint8_t line_length;
+
+    while (TRUE) {
+        line_length = line_input(SystemTable, line);
+        int success = 0;
+
+        for (UINT32 i = 0; i < GOP->Mode->MaxMode; i++) {
+            to_int(test, i);
+            if (!cmp_str16(test, line, line_length)) {
+                Status = uefi_call_wrapper(GOP->SetMode, 2, GOP, i);
+                if (EFI_ERROR(Status))
+                    return Status;
+
+                success = 1;
+                break;
+            }
         }
+
+        if (success)
+            break;
+
+        Print(L"Invalid mode\n");
     }
 
     output_init(
@@ -120,55 +147,5 @@ static EFI_STATUS init_gop(EFI_SYSTEM_TABLE *SystemTable) {
         GOP->Mode->Info->PixelFormat
     );
 
-    return Status;
-}
-
-static void loop(EFI_SYSTEM_TABLE *SystemTable) {
-    Print(L"$ ");
-
-    EFI_INPUT_KEY Key;
-    UINTN Index;
-    EFI_STATUS Status;
-
-    EFI_BOOT_SERVICES* BootServices = SystemTable->BootServices;
-    SIMPLE_INPUT_INTERFACE* ConIn = SystemTable->ConIn;
-    // SIMPLE_TEXT_OUTPUT_INTERFACE* ConOut = SystemTable->ConOut;
-
-    uint8_t line_length = 0;
-    CHAR16 line[255];
-
-    while (TRUE) {
-        uefi_call_wrapper(BootServices->WaitForEvent, 3, 1, &ConIn->WaitForKey, &Index);
-        Status = uefi_call_wrapper(ConIn->ReadKeyStroke, 2, ConIn, &Key);
-
-        if (!EFI_ERROR(Status)) {
-            switch (Key.UnicodeChar) {
-                case L'\0':
-                    break;
-                case L'\r':
-                    if (line_length == 3 && line[0] == L'r' && line[1] == L'u' && line[2] == L'n') {
-                        return;
-                    }
-
-                    Print(L"\n$ ");
-                    line_length = 0;
-                    break;
-                case L'\b':
-                    if (line_length) {
-                        line_length--;
-                        Print(L"\b");
-                    }
-
-                    break;
-                default:
-                    if (line_length != UINT8_MAX) {
-                        line[line_length] = Key.UnicodeChar;
-                        line_length++;
-                        CHAR16 Input[] = { Key.UnicodeChar, L'\0' };
-                        Print(Input);
-                    }
-
-            }
-        }
-    }
+    return EFI_SUCCESS;
 }
