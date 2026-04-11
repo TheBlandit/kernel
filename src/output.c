@@ -18,13 +18,20 @@ const uint32_t CHAR_W = 9;
 
 const uint32_t BACKGROUND = 0x101010;
 
-void output_init(struct OutputData data) {
-    buffer = data.buffer;
-    buffer_size = data.buffer_size;
-    pixel_w = data.width;
-    pixel_h = data.height;
-    pitch = data.pitch;
-    format = data.format;
+void output_init(
+    uint32_t *nbuffer,
+    uint32_t nbuffer_size,
+    uint32_t nwidth,
+    uint32_t nheight,
+    uint32_t npitch,
+    EFI_GRAPHICS_PIXEL_FORMAT nformat
+) {
+    buffer = nbuffer;
+    buffer_size = nbuffer_size;
+    pixel_w = nwidth;
+    pixel_h = nheight;
+    pitch = npitch;
+    format = nformat;
 
     char_w = pixel_w / CHAR_W;
     char_h = pixel_h / CHAR_H;

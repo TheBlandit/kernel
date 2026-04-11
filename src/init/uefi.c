@@ -111,15 +111,14 @@ static EFI_STATUS init_gop(EFI_SYSTEM_TABLE *SystemTable) {
         }
     }
 
-    // Init Output
-    struct OutputData data;
-    data.buffer = (uint32_t*)GOP->Mode->FrameBufferBase;
-    data.buffer_size = GOP->Mode->FrameBufferSize;
-    data.width = GOP->Mode->Info->HorizontalResolution;
-    data.height = GOP->Mode->Info->VerticalResolution;
-    data.pitch = GOP->Mode->Info->PixelsPerScanLine;
-    data.format = GOP->Mode->Info->PixelFormat;
-    output_init(data);
+    output_init(
+        (uint32_t*)GOP->Mode->FrameBufferBase,
+        GOP->Mode->FrameBufferSize,
+        GOP->Mode->Info->HorizontalResolution,
+        GOP->Mode->Info->VerticalResolution,
+        GOP->Mode->Info->PixelsPerScanLine,
+        GOP->Mode->Info->PixelFormat
+    );
 
     return Status;
 }
@@ -133,7 +132,7 @@ static void loop(EFI_SYSTEM_TABLE *SystemTable) {
 
     EFI_BOOT_SERVICES* BootServices = SystemTable->BootServices;
     SIMPLE_INPUT_INTERFACE* ConIn = SystemTable->ConIn;
-    SIMPLE_TEXT_OUTPUT_INTERFACE* ConOut = SystemTable->ConOut;
+    // SIMPLE_TEXT_OUTPUT_INTERFACE* ConOut = SystemTable->ConOut;
 
     uint8_t line_length = 0;
     CHAR16 line[255];
