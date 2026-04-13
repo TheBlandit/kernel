@@ -4,6 +4,7 @@
 #include "uefi.h"
 #include "../output.h"
 #include "uefi_helper.h"
+#include "interrupts.h"
 
 static EFI_STATUS init_uefi_screen(EFI_SYSTEM_TABLE *SystemTable);
 static EFI_STATUS init_gop(EFI_SYSTEM_TABLE *SystemTable);
@@ -22,10 +23,16 @@ EFI_STATUS init_uefi(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     if (EFI_ERROR(Status))
         return Status;
 
+    Status = create_idt(SystemTable);
+    if (EFI_ERROR(Status))
+        return Status;
+
     // Errors are printed using output now
     Status = exit_boot(ImageHandle, SystemTable);
     if (EFI_ERROR(Status))
         return Status;
+
+    init_interrupts();
 
     return EFI_SUCCESS;
 }

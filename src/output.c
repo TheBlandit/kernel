@@ -1,6 +1,7 @@
 #include "output.h"
 #include "efiprot.h"
 #include "font.h"
+#include "isr.h"
 #include <stdint.h>
 
 static uint32_t *buffer;
@@ -44,7 +45,7 @@ void output_init(
 }
 
 // Shift all lines up by 1
-void shift_up() {
+ISR_SAFE static void shift_up() {
     for (uint32_t y = 0; y < (CHAR_H * (char_h - 1)); y++) {
         uint32_t yy = y * pitch;
         for (uint32_t x = 0; x < (CHAR_W * char_w); x++) {
@@ -60,7 +61,24 @@ void shift_up() {
     }
 }
 
-void raw_print(char string[]) {
+ISR_SAFE void print_char(const uint8_t *glyph, uint32_t x, uint32_t y, uint32_t colour) {
+    uint32_t x_base = x * CHAR_W;
+    uint32_t y_base = y * CHAR_H;
+
+    for (uint32_t col = 0; col < CHAR_W; col++) {
+        uint16_t col_data = glyph[col << 1] + (glyph[(col << 1) + 1] << 8);
+
+        for (uint32_t row = 0; row < CHAR_H; row++) {
+            if ((col_data >> row) & 1) {
+                buffer[x_base + col + (y_base + row) * pitch] = colour;
+            } else {
+                buffer[x_base + col + (y_base + row) * pitch] = BACKGROUND;
+            }
+        }
+    }
+}
+
+ISR_SAFE void raw_print(char string[]) {
     uint32_t i = 0;
     char current = *string;
 
@@ -70,29 +88,76 @@ void raw_print(char string[]) {
             shift_up();
         }
 
-        const uint8_t *char_data = FONT_DATA + (current * 18);
-
-        uint32_t x_base = cursor_x * CHAR_W;
-        uint32_t y_base = CHAR_H * (char_h - 1);
-
-        for (uint32_t col = 0; col < CHAR_W; col++) {
-            uint16_t col_data = char_data[col << 1] + (char_data[(col << 1) + 1] << 8);
-
-            for (uint32_t row = 0; row < CHAR_H; row++) {
-                if ((col_data >> row) & 1) {
-                    buffer[x_base + col + (y_base + row) * pitch] = 0xFFFFFFFF;
-                }
-            }
-        }
+        print_char(FONT_DATA + (current * 18), cursor_x, char_h - 1, 0xFFFFFFFF);
 
         current = string[++i];
         cursor_x++;
     }
 }
 
-void raw_println(char *string) {
+ISR_SAFE void raw_println(char *string) {
     raw_print(string);
     cursor_x = 0;
     shift_up();
 }
 
+const char SCANCODE_MAP[256] = {
+    // 00
+    '\0', '\0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-', '=', '\0', '\0',
+    'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p', '[', ']', '\0', '\0', 'a', 's',
+    'd', 'f', 'g', 'h', 'j', 'k', 'l', ';', '\'', '`', '\0', '#', 'z', 'x', 'c', 'v',
+    'b', 'n', 'm', ',', '.', '/', '\0', '\0', '\0', ' ', '\0', '\0', '\0', '\0', '\0', '\0',
+    // 40
+    '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+    '\0', '\0', '\0', '\0', '\0', '\0', '\\', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+    '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+    '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+    // 80
+    '\0', '\0', '!', '"', '\0', '$', '%', '^', '&', '*', '(', ')', '_', '+', '\0', '\0',
+    'Q', 'W', 'E', 'R', 'T', 'Y', 'U', 'I', 'O', 'P', '{', '}', '\0', '\0', 'A', 'S',
+    'D', 'F', 'G', 'H', 'J', 'K', 'L', ':', '@', '\0', '\0', '~', 'Z', 'X', 'C', 'V',
+    'B', 'N', 'M', '<', '>', '?', '\0', '\0', '\0', ' ', '\0', '\0', '\0', '\0', '\0', '\0',
+    // C0
+    '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+    '\0', '\0', '\0', '\0', '\0', '\0', '|', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+    '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+    '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0', '\0',
+};
+
+ISR_SAFE void input_scancode(uint8_t scancode) {
+    static char shift = 0;
+
+    if (scancode < 0x80) {
+        scancode |= shift;
+        char map = SCANCODE_MAP[scancode];
+        if (map == '\0') {
+            if (scancode == 0x2A) {
+                shift = 0x80;
+            } else if (scancode == 0x0E) {
+                // Backspace
+                if (cursor_x) {
+                    cursor_x--;
+                    const uint8_t *SPACE = FONT_DATA + ((uintptr_t)' ' * 18);
+                    print_char(SPACE, cursor_x, char_h - 1, 0xFFFFFFFF);
+                }
+            } else if (scancode == 0x1C) {
+                shift_up();
+                cursor_x = 0;
+            } else {
+                // Unknown key
+            }
+        } else {
+            print_char(FONT_DATA + map * 18, cursor_x, char_h - 1, 0xFFFFFFFF);
+
+            cursor_x++;
+            if (cursor_x == char_w) {
+                shift_up();
+                cursor_x = 0;
+            }
+        }
+    } else {
+        if (scancode == 0xAA) {
+            shift = 0;
+        }
+    }
+}

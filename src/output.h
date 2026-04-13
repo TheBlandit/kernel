@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <efi.h>
+#include "isr.h"
 
 void output_init(
     uint32_t *nbuffer,
@@ -12,6 +13,6 @@ void output_init(
     EFI_GRAPHICS_PIXEL_FORMAT nformat
 );
 
-void raw_print(char string[]);
-void raw_println(char string[]);
-int move_cursor();
+ISR_SAFE void raw_print(char string[]);
+ISR_SAFE void raw_println(char string[]);
+ISR_SAFE void input_scancode(uint8_t scancode);

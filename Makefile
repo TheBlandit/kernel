@@ -33,6 +33,7 @@ CFLAGS := \
     -I$(EFI_INCLUDE)/$(EFI_ARCH) \
     -DEFI_FUNCTION_WRAPPER \
     -Wall -Wextra \
+    -mgeneral-regs-only \
     -MP -MD # For deps
 
 # Linker flags
