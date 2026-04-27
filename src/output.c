@@ -1,5 +1,4 @@
 #include "output.h"
-#include "efiprot.h"
 #include "font.h"
 #include "isr.h"
 #include <stdint.h>
@@ -42,6 +41,9 @@ void output_init(
             buffer[x + y * pitch] = BACKGROUND;
         }
     }
+
+    print_num((uint64_t)buffer);
+    raw_println("");
 }
 
 // Shift all lines up by 1
@@ -160,4 +162,15 @@ ISR_SAFE void input_scancode(uint8_t scancode) {
             shift = 0;
         }
     }
+}
+
+void print_num(uint64_t num) {
+    uint64_t next = num / 10;
+    if (next)
+        print_num(next);
+
+    num = num % 10;
+    char string[2] = " ";
+    string[0] = num + '0';
+    raw_print(string);
 }

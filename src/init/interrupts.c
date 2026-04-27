@@ -3,7 +3,6 @@
 #include <efi.h>
 #include <stdint.h>
 #include "../output.h"
-#include "efidef.h"
 
 const uintptr_t IDT_ENTRIES = 256;
 const uint8_t INT_KEYBOARD = 0x21;
@@ -87,7 +86,7 @@ EFI_STATUS create_idt(EFI_SYSTEM_TABLE *SystemTable) {
     EFI_STATUS Status;
     EFI_PHYSICAL_ADDRESS buffer;
     const UINTN PAGES = ((IDT_ENTRIES * sizeof(struct descriptor) + 0xFFF) >> 12);
-    Status = uefi_call_wrapper(SystemTable->BootServices->AllocatePages, 4, AllocateAnyPages, EfiBootServicesData, PAGES, &buffer);
+    Status = uefi_call_wrapper(SystemTable->BootServices->AllocatePages, 4, AllocateAnyPages, EfiLoaderData, PAGES, &buffer);
     idt = (struct descriptor*)buffer;
 
     if (EFI_ERROR(Status)) {

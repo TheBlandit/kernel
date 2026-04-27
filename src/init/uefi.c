@@ -2,16 +2,19 @@
 #include <efilib.h>
 #include <stdint.h>
 #include "uefi.h"
-#include "../output.h"
 #include "uefi_helper.h"
 #include "interrupts.h"
+#include "../output.h"
+#include "../mem.h"
 
 static EFI_STATUS init_uefi_screen(EFI_SYSTEM_TABLE *SystemTable);
-static EFI_STATUS init_gop(EFI_SYSTEM_TABLE *SystemTable);
-static EFI_STATUS exit_boot(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable);
+static EFI_STATUS init_gop(EFI_SYSTEM_TABLE *SystemTable, struct mem_byte_buffer *video_buffer);
+static EFI_STATUS exit_boot(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable, struct mem_byte_buffer video_buffer);
 
 EFI_STATUS init_uefi(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     EFI_STATUS Status;
+    struct mem_byte_buffer video_buffer;
+
     uefi_call_wrapper(SystemTable->BootServices->SetWatchdogTimer, 4, 0, 0, 0, NULL);
     InitializeLib(ImageHandle, SystemTable);
 
@@ -19,7 +22,7 @@ EFI_STATUS init_uefi(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     if (EFI_ERROR(Status))
         return Status;
 
-    Status = init_gop(SystemTable);
+    Status = init_gop(SystemTable, &video_buffer);
     if (EFI_ERROR(Status))
         return Status;
 
@@ -28,7 +31,7 @@ EFI_STATUS init_uefi(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
         return Status;
 
     // Errors are printed using output now
-    Status = exit_boot(ImageHandle, SystemTable);
+    Status = exit_boot(ImageHandle, SystemTable, video_buffer);
     if (EFI_ERROR(Status))
         return Status;
 
@@ -37,7 +40,7 @@ EFI_STATUS init_uefi(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
     return EFI_SUCCESS;
 }
 
-static EFI_STATUS exit_boot(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable) {
+static EFI_STATUS exit_boot(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTable, struct mem_byte_buffer video_buffer) {
     EFI_STATUS Status;
 
     UINTN Pages = 8;
@@ -47,7 +50,7 @@ static EFI_STATUS exit_boot(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTabl
     UINT32 DescriptorVersion;
 
     while (TRUE) {
-        Status = uefi_call_wrapper(SystemTable->BootServices->AllocatePages, 4, AllocateAnyPages, EfiBootServicesData, Pages, (EFI_PHYSICAL_ADDRESS*)&MemoryMap);
+        Status = uefi_call_wrapper(SystemTable->BootServices->AllocatePages, 4, AllocateAnyPages, EfiLoaderData, Pages, (EFI_PHYSICAL_ADDRESS*)&MemoryMap);
         UINTN MemoryMapSize = Pages << 12;
 
         if (EFI_ERROR(Status)) {
@@ -74,6 +77,10 @@ static EFI_STATUS exit_boot(EFI_HANDLE ImageHandle, EFI_SYSTEM_TABLE *SystemTabl
                 }
             } else {
                 raw_println("UEFI exit success");
+
+                if (mem_init(MemoryMap, MemoryMapSize, DescriptorSize, video_buffer))
+                    return EFI_ERROR(1);
+
                 return EFI_SUCCESS;
             }
         }
@@ -92,7 +99,7 @@ static EFI_STATUS init_uefi_screen(EFI_SYSTEM_TABLE *SystemTable) {
     return uefi_call_wrapper(SystemTable->ConOut->EnableCursor, 2, SystemTable->ConOut, TRUE);
 }
 
-static EFI_STATUS init_gop(EFI_SYSTEM_TABLE *SystemTable) {
+static EFI_STATUS init_gop(EFI_SYSTEM_TABLE *SystemTable, struct mem_byte_buffer *video_buffer) {
     EFI_STATUS Status;
     EFI_HANDLE *HandleBuffer;
     UINTN HandleCount;
@@ -145,9 +152,15 @@ static EFI_STATUS init_gop(EFI_SYSTEM_TABLE *SystemTable) {
         Print(L"Invalid mode\n");
     }
 
+    uintptr_t buffer = GOP->Mode->FrameBufferBase;
+    uint32_t size = GOP->Mode->FrameBufferSize;
+
+    video_buffer->size = size;
+    video_buffer->start = buffer;
+
     output_init(
-        (uint32_t*)GOP->Mode->FrameBufferBase,
-        GOP->Mode->FrameBufferSize,
+        (uint32_t*)buffer,
+        size,
         GOP->Mode->Info->HorizontalResolution,
         GOP->Mode->Info->VerticalResolution,
         GOP->Mode->Info->PixelsPerScanLine,

@@ -16,3 +16,5 @@ void output_init(
 ISR_SAFE void raw_print(char string[]);
 ISR_SAFE void raw_println(char string[]);
 ISR_SAFE void input_scancode(uint8_t scancode);
+
+void print_num(uint64_t num);
