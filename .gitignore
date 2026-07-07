@@ -2,3 +2,4 @@ build/
 boot/
 bin/
 OVMF_VARS.fd
+/target
