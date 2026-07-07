@@ -18,14 +18,14 @@ for arg in "$@"; do
     esac
 done
 
-mkdir -p boot/EFI/BOOT
+mkdir -p fs/EFI/BOOT
 
 if [ "$release" = true ]; then
     cargo build --target x86_64-unknown-uefi --release
-    cp target/x86_64-unknown-uefi/release/kernel.efi boot/EFI/BOOT/BOOTX64.EFI
+    cp target/x86_64-unknown-uefi/release/kernel.efi fs/EFI/BOOT/BOOTX64.EFI
 else
     cargo build --target x86_64-unknown-uefi
-    cp target/x86_64-unknown-uefi/debug/kernel.efi boot/EFI/BOOT/BOOTX64.EFI
+    cp target/x86_64-unknown-uefi/debug/kernel.efi fs/EFI/BOOT/BOOTX64.EFI
 fi
 
 if [ "$run" = true ]; then
@@ -38,7 +38,7 @@ if [ "$run" = true ]; then
         -cpu qemu64 \
         -drive if=pflash,format=raw,readonly=on,file='/usr/share/OVMF/x64/OVMF_CODE.4m.fd' \
         -drive if=pflash,format=raw,file='OVMF_VARS.fd' \
-        -drive file=fat:rw:'boot',format=raw,if=virtio \
+        -drive file=fat:rw:'fs',format=raw,if=virtio \
         -net none \
         -vga std
 fi
