@@ -4,9 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-# uefi = "*"
 r-efi = "*"
 static_assertions = "*"
+
+[dependencies.num-traits]
+version = "*"
+default-features = false
 
 [profile.dev]
 panic = "abort"

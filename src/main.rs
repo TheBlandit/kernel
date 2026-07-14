@@ -148,9 +148,9 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
                 ));
             }
             output::raw_print(b"', LINE: '");
-            output::num::u32(location.line());
+            output::print_num(location.line());
             output::raw_print(b"', COLUMN: '");
-            output::num::u32(location.column());
+            output::print_num(location.column());
             output::raw_println(b"'");
         } else {
             output::raw_println(b" FROM UNKNOWN");

@@ -229,46 +229,38 @@ pub fn input_scancode(scancode: u8) {
     }
 }
 
-pub mod num {
-    pub fn u32(num: u32) {
-        let next = num / 10;
+pub fn print_num<T: num_traits::PrimInt + num_traits::AsPrimitive<u8> + From<u8>>(mut num: T) {
+    let ten = <T as From<u8>>::from(10);
+    let zero = T::zero();
 
-        if next > 0 {
-            u32(next);
-        }
-
-        let rem = (num % 10) as u8;
-        super::raw_print(&[rem + b'0']);
+    if num < zero {
+        raw_print(b"-");
+        num = zero - num;
     }
 
-    pub fn u128(num: u128) {
-        let next = num / 10;
+    let next = num / ten;
 
-        if next > 0 {
-            u128(next);
-        }
-
-        let rem = (num % 10) as u8;
-        super::raw_print(&[rem + b'0']);
+    if next > zero {
+        print_num(next);
     }
+
+    let rem = (num % ten).as_();
+    raw_print(&[rem + b'0']);
 }
 
-pub mod hex {
-    pub fn u128(num: u128) {
-        let next = num >> 4;
+pub fn print_hex<T: num_traits::PrimInt + num_traits::AsPrimitive<u8>>(mut num: T) {
+    let nibbles = size_of::<T>() >> 2;
 
-        if next > 0 {
-            u128(next);
-        }
-
-        let rem = (num & 0xF) as u8;
+    for _ in 0..nibbles {
+        num = num.rotate_left(4);
+        let rem = num.as_() & 0xF;
         let char = if rem < 10 {
             rem + b'0'
         } else {
             rem + b'A' - 10
         };
 
-        super::raw_print(&[char]);
+        raw_print(&[char]);
     }
 }
 
