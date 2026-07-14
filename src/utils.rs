@@ -15,7 +15,9 @@ macro_rules! status_panic {
     };
 }
 
-pub struct MemByteBuffer {
-    pub start: usize,
-    pub size: usize,
+#[repr(C, packed)]
+#[derive(Clone, Copy, Default)]
+pub struct DescTablePtr {
+    pub limit: u16,
+    pub ptr: usize,
 }

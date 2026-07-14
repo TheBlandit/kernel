@@ -1,5 +1,7 @@
 use core::ffi::c_void;
 
+use crate::utils::DescTablePtr;
+
 const INT_KEYBOARD: u8 = 0x21;
 const ENTRIES: usize = 256;
 
@@ -70,13 +72,7 @@ unsafe fn outb(port: u16, value: u8) {
 
 static mut IDT: [Idte; ENTRIES] = [Idte::new(0, 0, 0); ENTRIES];
 
-#[repr(C, packed)]
-struct IdtDesc {
-    limit: u16,
-    ptr: usize,
-}
-
-static mut IDTR: IdtDesc = IdtDesc {
+static mut IDTR: DescTablePtr = DescTablePtr {
     limit: (ENTRIES * size_of::<Idte>() - 1) as u16,
     ptr: 0,
 };
@@ -92,7 +88,7 @@ mod handlers {
         panic!("Unhandled interrupt (with error code)");
     }
 
-    pub extern "x86-interrupt" fn keyboard(frame: IntFrame) {
+    pub extern "x86-interrupt" fn keyboard(_frame: IntFrame) {
         unsafe {
             let scancode = super::inb(0x60);
             crate::output::input_scancode(scancode);
@@ -101,7 +97,7 @@ mod handlers {
     }
 }
 
-/// Called after exit boot
+/// Called after relocate
 pub unsafe fn init() {
     #[allow(static_mut_refs)]
     unsafe {
@@ -133,7 +129,7 @@ pub unsafe fn init() {
         core::arch::asm!(
             "lidt [{}]",
             "sti",
-            in(reg) (&IDTR) as *const IdtDesc as usize,
+            in(reg) &IDTR as *const DescTablePtr as usize,
             options(nostack, nomem)
         );
 

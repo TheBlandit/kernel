@@ -1,10 +1,10 @@
 use core::ptr::null_mut;
 use r_efi::{efi::SystemTable, protocols::graphics_output::GraphicsPixelFormat};
 
-use crate::{status_panic, utils::MemByteBuffer};
+use crate::{mem::MemByteBuffer, status_panic};
 
-struct StaticData {
-    buffer: *mut u32,
+pub struct StaticData {
+    pub buffer: *mut u32,
     size: usize,
     pixel_w: usize,
     pixel_h: usize,
@@ -14,7 +14,7 @@ struct StaticData {
     format: GraphicsPixelFormat,
 }
 
-static mut CONFIG: StaticData = StaticData {
+pub static mut CONFIG: StaticData = StaticData {
     buffer: null_mut(),
     size: 0,
     pixel_w: 0,
@@ -250,6 +250,25 @@ pub mod num {
 
         let rem = (num % 10) as u8;
         super::raw_print(&[rem + b'0']);
+    }
+}
+
+pub mod hex {
+    pub fn u128(num: u128) {
+        let next = num >> 4;
+
+        if next > 0 {
+            u128(next);
+        }
+
+        let rem = (num & 0xF) as u8;
+        let char = if rem < 10 {
+            rem + b'0'
+        } else {
+            rem + b'A' - 10
+        };
+
+        super::raw_print(&[char]);
     }
 }
 

@@ -1,8 +1,10 @@
 #![no_std]
 #![no_main]
 #![feature(abi_x86_interrupt)]
+#![feature(negative_impls)]
 
 mod int;
+mod mem;
 mod output;
 mod utils;
 
@@ -46,12 +48,14 @@ pub extern "C" fn main(handle: Handle, table: *mut SystemTable) -> Status {
 
         BOOT_STATE = BootState::Output;
 
+        mem::paging::pre_exit_init(table);
+
         // Exit boot
         {
             let mut pages = 8usize;
             let boot_services = (*table).boot_services;
 
-            loop {
+            let mem_data = loop {
                 let mut memory_map: *mut r_efi::efi::MemoryDescriptor = null_mut();
 
                 status_panic!(
@@ -59,7 +63,7 @@ pub extern "C" fn main(handle: Handle, table: *mut SystemTable) -> Status {
                         r_efi::efi::ALLOCATE_ANY_PAGES,
                         r_efi::efi::LOADER_DATA,
                         pages,
-                        &mut memory_map as *mut *mut r_efi::efi::MemoryDescriptor as *mut u64,
+                        &mut memory_map as *mut _ as *mut u64,
                     ),
                     "UEFI exit allocate pages failure"
                 );
@@ -83,7 +87,11 @@ pub extern "C" fn main(handle: Handle, table: *mut SystemTable) -> Status {
 
                     if !status.is_error() {
                         crate::output::raw_println(b"UEFI exit success");
-                        break;
+                        break mem::paging::UEFIMemData {
+                            buffer_size: memory_map_size,
+                            desc_size,
+                            ptr: memory_map,
+                        };
                     }
                 }
 
@@ -93,12 +101,21 @@ pub extern "C" fn main(handle: Handle, table: *mut SystemTable) -> Status {
                 );
 
                 pages = (memory_map_size + 0x1FFF) >> 12; // Round up to nearest page and add 1 more
-            }
+            };
+
+            mem::paging::post_exit_init(mem_data);
         }
+    }
+}
+
+/// Called after relocation to high address space
+pub extern "C" fn high_entry() -> ! {
+    unsafe {
+        mem::paging::alloc_pages_this_kernel(10);
+
+        crate::output::raw_println(b"Allocated");
 
         int::init();
-
-        output::raw_println(b"Hello World");
 
         loop {
             core::arch::asm!("hlt");
@@ -122,7 +139,14 @@ fn panic_handler(info: &core::panic::PanicInfo) -> ! {
 
         if let Some(location) = info.location() {
             output::raw_print(b" FROM FILE: '");
-            output::raw_print(location.file_as_c_str().to_bytes());
+            let file = location.file();
+            // TODO: Finish relocation so all symbols are updated hence this OR will not be needed
+            unsafe {
+                output::raw_print(core::slice::from_raw_parts(
+                    (file.as_ptr() as usize | mem::paging::TO_HIGH_MASK) as *const u8,
+                    file.len(),
+                ));
+            }
             output::raw_print(b"', LINE: '");
             output::num::u32(location.line());
             output::raw_print(b"', COLUMN: '");
