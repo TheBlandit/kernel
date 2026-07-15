@@ -249,7 +249,7 @@ pub fn print_num<T: num_traits::PrimInt + num_traits::AsPrimitive<u8> + From<u8>
 }
 
 pub fn print_hex<T: num_traits::PrimInt + num_traits::AsPrimitive<u8>>(mut num: T) {
-    let nibbles = size_of::<T>() >> 2;
+    let nibbles = size_of::<T>() << 1;
 
     for _ in 0..nibbles {
         num = num.rotate_left(4);
