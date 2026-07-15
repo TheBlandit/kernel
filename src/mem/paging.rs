@@ -54,9 +54,10 @@ pub unsafe fn post_exit_init(data: UEFIMemData) -> ! {
         // Masks
         {
             let eax = core::arch::x86_64::__cpuid(0x8000_0008).eax;
-            let phy_addr_bits = (eax & 0xFF) as usize;
-            let mask = ((1 << phy_addr_bits) - 1) & !0xFFF;
-            PHY_ADDR_MASK = mask;
+            let phy_addr_bits = eax & 0xFF;
+            let lin_addr_bits = (eax >> 8) & 0xFF;
+            PHY_PAGE_MASK = ((1 << phy_addr_bits) - 1) & !0xFFF;
+            LIN_ADDR_MASK = (1 << lin_addr_bits) - 1;
         }
 
         for i in 0..(data.buffer_size / data.desc_size) {
@@ -251,31 +252,52 @@ pub unsafe fn pre_exit_init(table: *mut r_efi::efi::SystemTable) {
 /// Allocates pages for the current paging structure for the kernel
 #[inline]
 #[must_use]
-pub unsafe fn alloc_pages_this_kernel(pages: usize) -> usize {
+pub unsafe fn alloc_pages_cr3_kernel(pages: usize) -> usize {
     unsafe { alloc_pages(pages, true, read_reg!("cr3")) }
 }
 
 #[must_use]
 pub unsafe fn alloc_pages(pages: usize, kernel: bool, cr3: usize) -> usize {
     unsafe {
-        let start = ((cr3 & PHY_ADDR_MASK) | TO_HIGH_MASK) as *mut usize;
+        let cr3 = ((cr3 & PHY_PAGE_MASK) | TO_HIGH_MASK) as *mut usize;
 
         match PAGING_TYPE {
             PagingType::Level4 => {
-                let lin_start = level4_get_lin_hole(pages, start, kernel);
+                let lin_start = level4_get_lin_hole(pages, cr3, kernel);
                 let entry_mask = 3 | if kernel { 0 } else { 4 };
 
                 for page in lin_start..(lin_start + pages) {
                     level4_allocate_page(
                         page,
                         phy::allocate_zeroed_page(PageUse::Used) << 12,
-                        start,
+                        cr3,
                         entry_mask,
                     );
                 }
 
                 // Convert to pointer and make canonical
-                (((start as isize) << 28) >> 16) as usize
+                (((lin_start as isize) << 28) >> 16) as usize
+            }
+            PagingType::Level5 => unimplemented!(),
+        }
+    }
+}
+
+#[inline]
+pub unsafe fn free_pages_cr3(ptr: usize, pages: usize) {
+    unsafe { free_pages(ptr, pages, read_reg!("cr3")) }
+}
+
+pub unsafe fn free_pages(ptr: usize, pages: usize, cr3: usize) {
+    unsafe {
+        let lin_start = (ptr & LIN_ADDR_MASK) >> 12;
+        let cr3 = ((cr3 & PHY_PAGE_MASK) | TO_HIGH_MASK) as *mut usize;
+
+        match PAGING_TYPE {
+            PagingType::Level4 => {
+                for page in lin_start..(lin_start + pages) {
+                    level4_free_page(page, cr3);
+                }
             }
             PagingType::Level5 => unimplemented!(),
         }
@@ -283,12 +305,62 @@ pub unsafe fn alloc_pages(pages: usize, kernel: bool, cr3: usize) -> usize {
 }
 
 /// 1s in range (M,12]
-static mut PHY_ADDR_MASK: usize = 0;
+static mut PHY_PAGE_MASK: usize = 0;
+static mut LIN_ADDR_MASK: usize = 0;
 pub static mut TO_HIGH_MASK: usize = 0;
+
+unsafe fn level4_free_page(page_index: usize, pml4: *mut usize) {
+    unsafe {
+        const MASK: usize = 0x1FF;
+        let pml4i = (page_index >> 27) & MASK;
+        let pdpti = (page_index >> 18) & MASK;
+        let pdi = (page_index >> 9) & MASK;
+        let pti = page_index & MASK;
+
+        let pml4e = *pml4.offset(pml4i as isize);
+
+        if pml4e & 1 == 0 {
+            panic!("Attempted to free a linear address that wasn't allocated");
+        }
+
+        let pdpt = ((pml4e & PHY_PAGE_MASK) | TO_HIGH_MASK) as *mut usize;
+        let pdpte = *pdpt.offset(pdpti as isize);
+
+        if pdpte & 1 == 0 {
+            panic!("Attempted to free a linear address that wasn't allocated");
+        }
+
+        if pdpte & (1 << 7) == 1 {
+            panic!("Attempted to free a linear address that was allocated by a 1GB page");
+        }
+
+        let pd = ((pdpte & PHY_PAGE_MASK) | TO_HIGH_MASK) as *mut usize;
+        let pde = *pd.offset(pdi as isize);
+
+        if pde & 1 == 0 {
+            panic!("Attempted to free a linear address that wasn't allocated");
+        }
+
+        if pde & (1 << 7) == 1 {
+            panic!("Attempted to free a linear address that was allocated by a 2MB page");
+        }
+
+        let pt = ((pde & PHY_PAGE_MASK) | TO_HIGH_MASK) as *mut usize;
+        let pte = *pt.offset(pti as isize);
+
+        if pte & 1 == 0 {
+            panic!("Attempted to free a linear address that wasn't allocated");
+        } else {
+            let page = (pte & PHY_PAGE_MASK) >> 12;
+            phy::free_page(page);
+            *pt.offset(pti as isize) = 0;
+        }
+    }
+}
 
 unsafe fn level4_allocate_page(
     linear_page_index: usize,
-    physical_page_index: usize,
+    physical_page_addr: usize,
     pml4: *mut usize,
     entry_mask: usize,
 ) {
@@ -308,7 +380,7 @@ unsafe fn level4_allocate_page(
         let pml4e = *pml4.offset(pml4i as isize);
 
         let pdpt = if pml4e & 1 == 1 {
-            (pml4e & PHY_ADDR_MASK) | TO_HIGH_MASK
+            (pml4e & PHY_PAGE_MASK) | TO_HIGH_MASK
         } else {
             entry(pml4.offset(pml4i as isize))
         } as *mut usize;
@@ -318,11 +390,11 @@ unsafe fn level4_allocate_page(
         let pd = if pdpte & 1 == 1 {
             if pdpte & (1 << 7) == 1 {
                 panic!(
-                    "Attempted to allocate linear address that was already allocated (by a 1GB page)"
+                    "Attempted to allocate a linear address that was already allocated by a 1GB page"
                 );
             }
 
-            (pdpte & PHY_ADDR_MASK) | TO_HIGH_MASK
+            (pdpte & PHY_PAGE_MASK) | TO_HIGH_MASK
         } else {
             entry(pdpt.offset(pdpti as isize))
         } as *mut usize;
@@ -332,11 +404,11 @@ unsafe fn level4_allocate_page(
         let pt = if pde & 1 == 1 {
             if pde & (1 << 7) == 1 {
                 panic!(
-                    "Attempted to allocate linear address that was already allocated (by a 2MB page)"
+                    "Attempted to allocate a linear address that was already allocated by a 2MB page"
                 );
             }
 
-            (pde & PHY_ADDR_MASK) | TO_HIGH_MASK
+            (pde & PHY_PAGE_MASK) | TO_HIGH_MASK
         } else {
             entry(pd.offset(pdi as isize))
         } as *mut usize;
@@ -345,10 +417,10 @@ unsafe fn level4_allocate_page(
 
         if pte & 1 == 1 {
             panic!(
-                "Attempted to allocate linear address that was already allocated (by a 4KB page)"
+                "Attempted to allocate a linear address that was already allocated by a 4KB page"
             );
         } else {
-            *pt.offset(pti as isize) = physical_page_index | entry_mask;
+            *pt.offset(pti as isize) = physical_page_addr | entry_mask;
         }
     }
 }
@@ -387,7 +459,7 @@ unsafe fn level4_get_lin_hole(pages: usize, pml4: *const usize, kernel: bool) ->
             if pml4e & 1 == 0 {
                 not_present!(PML4_SIZE, pml4i << PML4_SHL);
             } else {
-                let pdpt = ((pml4e & PHY_ADDR_MASK) | TO_HIGH_MASK) as *const usize;
+                let pdpt = ((pml4e & PHY_PAGE_MASK) | TO_HIGH_MASK) as *const usize;
 
                 for pdpti in 0..512 {
                     const PDPT_SHL: usize = 18;
@@ -401,7 +473,7 @@ unsafe fn level4_get_lin_hole(pages: usize, pml4: *const usize, kernel: bool) ->
                         // 1 GB PAGE
                         buffer = None;
                     } else {
-                        let pd = ((pdpte & PHY_ADDR_MASK) | TO_HIGH_MASK) as *const usize;
+                        let pd = ((pdpte & PHY_PAGE_MASK) | TO_HIGH_MASK) as *const usize;
 
                         for pdi in 0..512 {
                             const PD_SHL: usize = 9;
@@ -418,7 +490,7 @@ unsafe fn level4_get_lin_hole(pages: usize, pml4: *const usize, kernel: bool) ->
                                 // 2MB page
                                 buffer = None;
                             } else {
-                                let pt = ((pde & PHY_ADDR_MASK) | TO_HIGH_MASK) as *const usize;
+                                let pt = ((pde & PHY_PAGE_MASK) | TO_HIGH_MASK) as *const usize;
 
                                 for pti in 0..512 {
                                     const PT_SHL: usize = 0;
