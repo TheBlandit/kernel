@@ -2,25 +2,7 @@
 
 use core::ops::{Deref, DerefMut};
 
-pub unsafe fn alloc(alignment: usize, size: usize) -> *mut u8 {
-    unimplemented!();
-}
-
-unsafe fn internal_free(ptr: *const u8) {
-    unimplemented!();
-}
-
-#[inline(always)]
-pub unsafe fn alloc_t<T>() -> *mut T {
-    unsafe { alloc(core::mem::align_of::<T>(), core::mem::size_of::<T>()) as *mut T }
-}
-
-#[inline(always)]
-pub unsafe fn free<T>(ptr: *const T) {
-    unsafe {
-        internal_free(ptr as *const u8);
-    }
-}
+use super::alloc::{alloc_t, dealloc_t};
 
 pub struct Box<T> {
     ptr: *mut T,
@@ -51,7 +33,7 @@ impl<T> Drop for Box<T> {
     fn drop(&mut self) {
         unsafe {
             drop(self.ptr.read());
-            free(self.ptr)
+            dealloc_t(self.ptr)
         };
     }
 }
@@ -110,7 +92,7 @@ impl<T> Drop for Rc<T> {
                 (*self.ptr).count = count;
             } else {
                 drop(self.ptr.read());
-                free(self.ptr);
+                dealloc_t(self.ptr);
             }
         }
     }

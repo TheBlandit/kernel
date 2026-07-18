@@ -112,7 +112,7 @@ pub extern "C" fn main(handle: Handle, table: *mut SystemTable) -> Status {
 pub extern "C" fn high_entry() -> ! {
     unsafe {
         let ptr = mem::paging::alloc_pages_cr3_kernel(10);
-        mem::paging::free_pages_cr3(ptr, 10);
+        mem::paging::free::ptr_pages_cr3(ptr as *const u8, 10);
 
         crate::output::raw_println(b"Allocated");
 

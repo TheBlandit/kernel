@@ -252,12 +252,12 @@ pub unsafe fn pre_exit_init(table: *mut r_efi::efi::SystemTable) {
 /// Allocates pages for the current paging structure for the kernel
 #[inline]
 #[must_use]
-pub unsafe fn alloc_pages_cr3_kernel(pages: usize) -> usize {
+pub unsafe fn alloc_pages_cr3_kernel(pages: usize) -> *mut u8 {
     unsafe { alloc_pages(pages, true, read_reg!("cr3")) }
 }
 
 #[must_use]
-pub unsafe fn alloc_pages(pages: usize, kernel: bool, cr3: usize) -> usize {
+pub unsafe fn alloc_pages(pages: usize, kernel: bool, cr3: usize) -> *mut u8 {
     unsafe {
         let cr3 = ((cr3 & PHY_PAGE_MASK) | TO_HIGH_MASK) as *mut usize;
 
@@ -276,30 +276,44 @@ pub unsafe fn alloc_pages(pages: usize, kernel: bool, cr3: usize) -> usize {
                 }
 
                 // Convert to pointer and make canonical
-                (((lin_start as isize) << 28) >> 16) as usize
+                ((((lin_start as isize) << 28) >> 16) as usize) as *mut u8
             }
             PagingType::Level5 => unimplemented!(),
         }
     }
 }
 
-#[inline]
-pub unsafe fn free_pages_cr3(ptr: usize, pages: usize) {
-    unsafe { free_pages(ptr, pages, read_reg!("cr3")) }
-}
+pub mod free {
+    #[inline]
+    pub unsafe fn ptr_pages_cr3(ptr: *const u8, pages: usize) {
+        unsafe { ptr_pages(ptr, pages, read_reg!("cr3")) }
+    }
 
-pub unsafe fn free_pages(ptr: usize, pages: usize, cr3: usize) {
-    unsafe {
-        let lin_start = (ptr & LIN_ADDR_MASK) >> 12;
-        let cr3 = ((cr3 & PHY_PAGE_MASK) | TO_HIGH_MASK) as *mut usize;
+    #[inline]
+    pub unsafe fn ptr_pages(ptr: *const u8, pages: usize, cr3: usize) {
+        unsafe {
+            let start = ((ptr as usize) & super::LIN_ADDR_MASK) >> 12;
+            pages_buffer(super::MemPageBuffer { start, pages }, cr3);
+        }
+    }
 
-        match PAGING_TYPE {
-            PagingType::Level4 => {
-                for page in lin_start..(lin_start + pages) {
-                    level4_free_page(page, cr3);
+    #[inline]
+    pub unsafe fn pages_buffer_cr3(buffer: super::MemPageBuffer) {
+        unsafe { pages_buffer(buffer, read_reg!("cr3")) }
+    }
+
+    pub unsafe fn pages_buffer(buffer: super::MemPageBuffer, cr3: usize) {
+        unsafe {
+            let cr3 = ((cr3 & super::PHY_PAGE_MASK) | super::TO_HIGH_MASK) as *mut usize;
+
+            match super::PAGING_TYPE {
+                super::PagingType::Level4 => {
+                    for page in buffer.start..(buffer.start + buffer.pages) {
+                        super::level4_free_page(page, cr3);
+                    }
                 }
+                super::PagingType::Level5 => unimplemented!(),
             }
-            PagingType::Level5 => unimplemented!(),
         }
     }
 }
@@ -355,6 +369,8 @@ unsafe fn level4_free_page(page_index: usize, pml4: *mut usize) {
             phy::free_page(page);
             *pt.offset(pti as isize) = 0;
         }
+
+        // TODO: if not current CR3, INVLPG page
     }
 }
 
