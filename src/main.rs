@@ -114,9 +114,15 @@ pub extern "C" fn high_entry() -> ! {
         let ptr = mem::paging::alloc_pages_cr3_kernel(10);
         mem::paging::free::ptr_pages_cr3(ptr as *const u8, 10);
 
-        crate::output::raw_println(b"Allocated");
+        output::raw_println(b"Allocated");
 
         int::init();
+
+        let int = mem::boxed::Box::new(5);
+        output::raw_println(b"Boxed");
+        output::print_num(*int);
+        output::raw_println(b"");
+        drop(int);
 
         loop {
             core::arch::asm!("hlt");

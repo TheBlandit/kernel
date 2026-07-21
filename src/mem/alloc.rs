@@ -19,15 +19,19 @@ impl BigBufferVec {
     unsafe fn alloc(&mut self, pages: usize) -> *mut u8 {
         unsafe {
             if self.size >= self.capacity {
-                let new_pages = (self.pages << 1).min(1);
-                let ptr = super::paging::alloc_pages_cr3_kernel(new_pages) as *mut MemByteBuffer;
+                let new_pages = if self.pages == 0 {
+                    self.ptr = super::paging::alloc_pages_cr3_kernel(1) as *mut _;
+                    1
+                } else {
+                    let new_pages = self.pages << 1;
+                    self.ptr = super::paging::realloc_pages_cr3(
+                        self.ptr as *const u8,
+                        self.pages,
+                        new_pages,
+                    ) as *mut _;
+                    new_pages
+                };
 
-                for i in 0..(self.size as isize) {
-                    *ptr.offset(i) = *self.ptr.offset(i);
-                }
-
-                let free_ptr = core::mem::replace(&mut self.ptr, ptr);
-                super::paging::free::ptr_pages_cr3(free_ptr as *const u8, self.pages);
                 self.pages = new_pages;
                 self.capacity = (new_pages << 12) / size_of::<MemByteBuffer>();
             }
@@ -90,15 +94,19 @@ impl<const S: usize> ChunkBufferVec<S> {
             }
 
             if self.size >= self.capacity {
-                let new_pages = (self.pages << 1).min(1);
-                let ptr = super::paging::alloc_pages_cr3_kernel(new_pages) as *mut BufferEntry<S>;
+                let new_pages = if self.pages == 0 {
+                    self.ptr = super::paging::alloc_pages_cr3_kernel(1) as *mut _;
+                    1
+                } else {
+                    let new_pages = self.pages << 1;
+                    self.ptr = super::paging::realloc_pages_cr3(
+                        self.ptr as *const u8,
+                        self.pages,
+                        new_pages,
+                    ) as *mut _;
+                    new_pages
+                };
 
-                for i in 0..(self.size as isize) {
-                    *ptr.offset(i) = *self.ptr.offset(i);
-                }
-
-                let free_ptr = core::mem::replace(&mut self.ptr, ptr);
-                super::paging::free::ptr_pages_cr3(free_ptr as *const u8, self.pages);
                 self.pages = new_pages;
                 self.capacity = (new_pages << 12) / size_of::<BufferEntry<0>>();
             }
@@ -200,6 +208,30 @@ pub unsafe fn alloc(layout: Layout) -> *mut u8 {
             1025..=2048 => buffers::BUFFER_2048.alloc(),
             2049.. => buffers::BUFFER_BIG.alloc((layout.size() + 0xFFF) >> 12),
         }
+    }
+}
+
+pub unsafe fn realloc_t<T, G>(ptr: *const T) -> *mut G {
+    unsafe {
+        let new_ptr = alloc_t();
+        core::ptr::copy(
+            ptr as *const u8,
+            new_ptr as *mut u8,
+            size_of::<T>().min(size_of::<G>()),
+        );
+
+        dealloc_t(ptr);
+        new_ptr
+    }
+}
+
+pub unsafe fn realloc(ptr: *const u8, old: Layout, new_size: usize) -> *mut u8 {
+    unsafe {
+        let new = Layout::from_size_align(new_size, old.align()).expect("Invalid layout");
+        let new_ptr = alloc(new);
+        core::ptr::copy(ptr, new_ptr, old.size().min(new_size));
+        dealloc(ptr, old);
+        new_ptr
     }
 }
 

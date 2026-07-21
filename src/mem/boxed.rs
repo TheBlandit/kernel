@@ -38,6 +38,18 @@ impl<T> Drop for Box<T> {
     }
 }
 
+impl<T> AsRef<T> for Box<T> {
+    fn as_ref(&self) -> &T {
+        unsafe { &*self.ptr }
+    }
+}
+
+impl<T> AsMut<T> for Box<T> {
+    fn as_mut(&mut self) -> &mut T {
+        unsafe { &mut *self.ptr }
+    }
+}
+
 impl<T> Deref for Box<T> {
     type Target = T;
 
