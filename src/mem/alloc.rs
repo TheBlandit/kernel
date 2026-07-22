@@ -200,7 +200,8 @@ pub unsafe fn alloc(layout: Layout) -> *mut u8 {
     #[allow(static_mut_refs)]
     unsafe {
         match layout.size() {
-            0..=64 => buffers::BUFFER_64.alloc(),
+            0 => core::ptr::dangling_mut(),
+            1..=64 => buffers::BUFFER_64.alloc(),
             65..=128 => buffers::BUFFER_128.alloc(),
             129..=256 => buffers::BUFFER_256.alloc(),
             257..=512 => buffers::BUFFER_512.alloc(),
@@ -211,6 +212,7 @@ pub unsafe fn alloc(layout: Layout) -> *mut u8 {
     }
 }
 
+/// Do not realloc null
 pub unsafe fn realloc_t<T, G>(ptr: *const T) -> *mut G {
     unsafe {
         let new_ptr = alloc_t();
@@ -225,6 +227,7 @@ pub unsafe fn realloc_t<T, G>(ptr: *const T) -> *mut G {
     }
 }
 
+/// Do not realloc null
 pub unsafe fn realloc(ptr: *const u8, old: Layout, new_size: usize) -> *mut u8 {
     unsafe {
         let new = Layout::from_size_align(new_size, old.align()).expect("Invalid layout");
@@ -246,7 +249,8 @@ pub unsafe fn dealloc(ptr: *const u8, layout: Layout) {
     #[allow(static_mut_refs)]
     unsafe {
         match layout.size() {
-            0..=64 => buffers::BUFFER_64.dealloc(ptr),
+            0 => (),
+            1..=64 => buffers::BUFFER_64.dealloc(ptr),
             65..=128 => buffers::BUFFER_128.dealloc(ptr),
             129..=256 => buffers::BUFFER_256.dealloc(ptr),
             257..=512 => buffers::BUFFER_512.dealloc(ptr),

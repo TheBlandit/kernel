@@ -1,6 +1,6 @@
 pub mod alloc;
-pub mod boxed;
 pub mod paging;
+pub mod wrappers;
 
 #[derive(Clone, Copy)]
 pub struct MemByteBuffer {

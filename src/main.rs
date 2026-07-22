@@ -118,7 +118,7 @@ pub extern "C" fn high_entry() -> ! {
 
         int::init();
 
-        let int = mem::boxed::Box::new(5);
+        let int = mem::wrappers::Box::new(5);
         output::raw_println(b"Boxed");
         output::print_num(*int);
         output::raw_println(b"");
