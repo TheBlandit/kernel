@@ -111,7 +111,7 @@ pub extern "C" fn main(handle: Handle, table: *mut SystemTable) -> Status {
 /// Called after relocation to high address space
 pub extern "C" fn high_entry() -> ! {
     unsafe {
-        let ptr = mem::paging::alloc_pages_cr3_kernel(10);
+        let ptr = mem::paging::alloc::pages_cr3_kernel(10);
         mem::paging::free::ptr_pages_cr3(ptr as *const u8, 10);
 
         output::raw_println(b"Allocated");

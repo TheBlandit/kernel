@@ -20,11 +20,11 @@ impl BigBufferVec {
         unsafe {
             if self.size >= self.capacity {
                 let new_pages = if self.pages == 0 {
-                    self.ptr = super::paging::alloc_pages_cr3_kernel(1) as *mut _;
+                    self.ptr = super::paging::alloc::pages_cr3_kernel(1) as *mut _;
                     1
                 } else {
                     let new_pages = self.pages << 1;
-                    self.ptr = super::paging::realloc_pages_cr3(
+                    self.ptr = super::paging::realloc::pages_cr3(
                         self.ptr as *const u8,
                         self.pages,
                         new_pages,
@@ -36,7 +36,7 @@ impl BigBufferVec {
                 self.capacity = (new_pages << 12) / size_of::<MemByteBuffer>();
             }
 
-            let ptr = super::paging::alloc_pages_cr3_kernel(pages);
+            let ptr = super::paging::alloc::pages_cr3_kernel(pages);
             let buffer = MemByteBuffer {
                 start: ptr as usize,
                 size: pages << 12,
@@ -95,11 +95,11 @@ impl<const S: usize> ChunkBufferVec<S> {
 
             if self.size >= self.capacity {
                 let new_pages = if self.pages == 0 {
-                    self.ptr = super::paging::alloc_pages_cr3_kernel(1) as *mut _;
+                    self.ptr = super::paging::alloc::pages_cr3_kernel(1) as *mut _;
                     1
                 } else {
                     let new_pages = self.pages << 1;
-                    self.ptr = super::paging::realloc_pages_cr3(
+                    self.ptr = super::paging::realloc::pages_cr3(
                         self.ptr as *const u8,
                         self.pages,
                         new_pages,
@@ -172,7 +172,7 @@ impl<const S: usize> BufferEntry<S> {
 
     fn new() -> (Self, *mut u8) {
         unsafe {
-            let ptr = super::paging::alloc_pages_cr3_kernel(1);
+            let ptr = super::paging::alloc::pages_cr3_kernel(1);
             let this = Self { ptr, usage: 1 };
             (this, ptr)
         }

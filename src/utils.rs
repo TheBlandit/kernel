@@ -15,6 +15,32 @@ macro_rules! status_panic {
     };
 }
 
+#[macro_export]
+macro_rules! read_reg {
+    ($x:literal) => {
+        {
+            let reg;
+            core::arch::asm!(
+                concat!("mov {}, ", $x),
+                out(reg) reg,
+                options(nomem, preserves_flags, nostack)
+            );
+            reg
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! load_reg {
+    ($x:literal, $y:expr) => {
+        core::arch::asm!(
+            concat!("mov ", $x, ", {}"),
+            in(reg) $y,
+            options(nomem, preserves_flags, nostack)
+        )
+    };
+}
+
 #[repr(C, packed)]
 #[derive(Clone, Copy, Default)]
 pub struct DescTablePtr {
