@@ -48,7 +48,7 @@ pub extern "C" fn main(handle: Handle, table: *mut SystemTable) -> Status {
 
         BOOT_STATE = BootState::Output;
 
-        mem::paging::pre_exit_init(table);
+        mem::paging::init::pre_exit(table);
 
         // Exit boot
         {
@@ -87,7 +87,7 @@ pub extern "C" fn main(handle: Handle, table: *mut SystemTable) -> Status {
 
                     if !status.is_error() {
                         crate::output::raw_println(b"UEFI exit success");
-                        break mem::paging::UEFIMemData {
+                        break mem::paging::init::UEFIMemData {
                             buffer_size: memory_map_size,
                             desc_size,
                             ptr: memory_map,
@@ -103,7 +103,7 @@ pub extern "C" fn main(handle: Handle, table: *mut SystemTable) -> Status {
                 pages = (memory_map_size + 0x1FFF) >> 12; // Round up to nearest page and add 1 more
             };
 
-            mem::paging::post_exit_init(mem_data);
+            mem::paging::init::post_exit(mem_data);
         }
     }
 }
