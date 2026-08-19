@@ -15,11 +15,20 @@ pub struct MemPageBuffer {
 }
 
 impl MemPageBuffer {
-    fn into_byte_buffer(&self) -> MemByteBuffer {
-        // TODO: make canonical
-        MemByteBuffer {
-            start: self.start << 12,
-            size: self.pages << 12,
-        }
+    #[inline(always)]
+    pub fn new(start: usize, pages: usize) -> Self {
+        Self { start, pages }
+    }
+
+    /// Last page in the buffer
+    #[inline(always)]
+    pub fn inclusive_end(&self) -> usize {
+        self.exclusive_end() - 1
+    }
+
+    /// First page after the buffer
+    #[inline(always)]
+    pub fn exclusive_end(&self) -> usize {
+        self.start + self.pages
     }
 }

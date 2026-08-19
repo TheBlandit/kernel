@@ -6,6 +6,7 @@ mod phy;
 pub mod alloc;
 pub mod free;
 pub mod init;
+pub mod mmio;
 pub mod realloc;
 
 use crate::{mem::MemPageBuffer, utils::DescTablePtr};
@@ -42,6 +43,8 @@ static mut PHY_PAGE_USE: *mut PageUse = null_mut();
 static mut GDTR: DescTablePtr = DescTablePtr { ptr: 0, limit: 0 };
 /// 1s in range (M,12]
 static mut PHY_PAGE_MASK: usize = 0;
+/// M
+static mut PHY_ADDR_BITS: usize = 0;
 /// 1s in range (M,0]
 static mut LIN_ADDR_MASK: usize = 0;
 /// 1s in the range (63,M-1]

@@ -54,6 +54,39 @@ impl<T> Vec<T> {
         }
     }
 
+    pub fn insert(&mut self, mut value: T, index: usize) {
+        unsafe {
+            assert!(
+                index <= self.len,
+                "Attempted to insert at an invalid position"
+            );
+
+            for i in index..self.len {
+                core::mem::swap(self.get_unchecked_mut(i), &mut value);
+            }
+
+            self.push(value);
+        }
+    }
+
+    pub fn remove(&mut self, index: usize) -> T {
+        unsafe {
+            assert!(
+                index < self.len,
+                "Attempted to remove from an invalid position"
+            );
+
+            // Length must be at least 1
+            let mut value = self.pop().unwrap_unchecked();
+
+            for i in (index..self.len).rev() {
+                core::mem::swap(self.get_unchecked_mut(i), &mut value);
+            }
+
+            value
+        }
+    }
+
     pub fn pop(&mut self) -> Option<T> {
         if self.len == 0 {
             None
@@ -76,22 +109,6 @@ impl<T> Vec<T> {
             None
         } else {
             Some(unsafe { &mut *self.ptr.offset(self.len as isize - 1) })
-        }
-    }
-
-    pub fn get(&self, i: usize) -> Option<&T> {
-        if i < self.len {
-            Some(unsafe { &*self.ptr.offset(i as isize) })
-        } else {
-            None
-        }
-    }
-
-    pub fn get_mut(&self, i: usize) -> Option<&mut T> {
-        if i < self.len {
-            Some(unsafe { &mut *self.ptr.offset(i as isize) })
-        } else {
-            None
         }
     }
 

@@ -1,14 +1,37 @@
-use core::ptr::null_mut;
+use core::ptr::{null, null_mut};
 
 use super::{
-    GDTR, LIN_ADDR_MASK, PAGING_TYPE, PHY_PAGE_MASK, PHY_PAGE_USE, PageUse, PagingType,
-    TO_HIGH_MASK, TOTAL_PAGES, level4,
+    GDTR, LIN_ADDR_MASK, PAGING_TYPE, PHY_ADDR_BITS, PHY_PAGE_MASK, PHY_PAGE_USE, PageUse,
+    PagingType, TO_HIGH_MASK, TOTAL_PAGES, level4,
 };
 
+#[derive(Clone, Copy)]
 pub struct UEFIMemData {
-    pub buffer_size: usize,
-    pub desc_size: usize,
-    pub ptr: *const r_efi::efi::MemoryDescriptor,
+    buffer_size: usize,
+    desc_size: usize,
+    ptr: *const r_efi::efi::MemoryDescriptor,
+}
+
+impl UEFIMemData {
+    pub fn new(
+        buffer_size: usize,
+        desc_size: usize,
+        ptr: *const r_efi::efi::MemoryDescriptor,
+    ) -> Self {
+        Self {
+            buffer_size,
+            desc_size,
+            ptr,
+        }
+    }
+
+    pub unsafe fn for_each(&self, mut f: impl FnMut(r_efi::efi::MemoryDescriptor)) {
+        unsafe {
+            for i in 0..(self.buffer_size / self.desc_size) {
+                f(*self.ptr.byte_offset((i * self.desc_size) as isize))
+            }
+        }
+    }
 }
 
 const GDT: &'static [u64; 5] = &[
@@ -74,15 +97,13 @@ pub unsafe fn pre_exit(table: *mut r_efi::efi::SystemTable) {
 
         let mut mem_size = 0;
 
-        for i in 0..(mem_data.buffer_size / mem_data.desc_size) {
-            let desc = *mem_data.ptr.byte_offset((i * mem_data.desc_size) as isize);
-
+        mem_data.for_each(|desc| {
             if desc.r#type != r_efi::efi::RESERVED_MEMORY_TYPE
                 && desc.r#type != r_efi::efi::MEMORY_MAPPED_IO
             {
                 mem_size = mem_size.max((desc.number_of_pages << 12) + desc.physical_start);
             }
-        }
+        });
 
         debug_assert_eq!(mem_size, 512 << 20, "UEFI reporting incorrect memory size");
 
@@ -108,6 +129,12 @@ pub unsafe fn pre_exit(table: *mut r_efi::efi::SystemTable) {
     }
 }
 
+static mut UEFI_DATA: UEFIMemData = UEFIMemData {
+    buffer_size: 0,
+    ptr: null(),
+    desc_size: 0,
+};
+
 pub unsafe fn post_exit(data: UEFIMemData) -> ! {
     unsafe {
         // Masks
@@ -116,6 +143,7 @@ pub unsafe fn post_exit(data: UEFIMemData) -> ! {
             let phy_addr_bits = eax & 0xFF;
             let lin_addr_bits = (eax >> 8) & 0xFF;
             PHY_PAGE_MASK = ((1 << phy_addr_bits) - 1) & !0xFFF;
+            PHY_ADDR_BITS = phy_addr_bits as usize;
             LIN_ADDR_MASK = (1 << lin_addr_bits) - 1;
         }
 
@@ -170,12 +198,15 @@ pub unsafe fn post_exit(data: UEFIMemData) -> ! {
             }
         };
 
-        let rsp = super::alloc::alloc_pages(16, true, cr3).byte_offset(16 * 0x1000);
+        let rsp = super::alloc::alloc_pages(16, true, cr3).byte_offset(0x10000);
 
         let eax = core::arch::x86_64::__cpuid(0x8000_0008).eax;
         let lin_addr_bits = ((eax >> 8) & 0xFF) as usize;
         assert_eq!(lin_addr_bits, 48, "Unsupported linear address size");
         TO_HIGH_MASK = !((1 << (lin_addr_bits - 1)) - 1);
+
+        UEFI_DATA = data;
+        UEFI_DATA.ptr = (UEFI_DATA.ptr as usize | TO_HIGH_MASK) as *const _;
 
         crate::output::raw_println(b"Pre high address jump");
 
@@ -250,6 +281,10 @@ unsafe extern "C" fn high_jump() -> ! {
 
         crate::output::print_num(total);
         crate::output::raw_println(b" pages freed");
+
+        super::mmio::init(UEFI_DATA);
+        crate::output::raw_println(b"Initialised MMIO");
+
         crate::high_entry();
     }
 }

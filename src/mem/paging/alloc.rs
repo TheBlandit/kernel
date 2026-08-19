@@ -20,7 +20,7 @@ pub unsafe fn alloc_pages(pages: usize, kernel: bool, cr3: usize) -> *mut u8 {
                 for page in lin_start..(lin_start + pages) {
                     level4::allocate_page(
                         page,
-                        phy::allocate_zeroed_page(PageUse::Used) << 12,
+                        phy::allocate_page_addr(true).unwrap(),
                         cr3,
                         entry_mask,
                     );

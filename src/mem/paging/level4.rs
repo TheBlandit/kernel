@@ -1,7 +1,9 @@
 use super::{PHY_PAGE_MASK, PageUse, TO_HIGH_MASK, phy};
 use crate::mem::MemPageBuffer;
 
-pub unsafe fn free_page(page_index: usize, pml4: *mut usize) {
+/// Returns physical address of page removed (but does not free the physical page)
+#[must_use]
+pub unsafe fn remove_page(page_index: usize, pml4: *mut usize) -> usize {
     unsafe {
         const MASK: usize = 0x1FF;
         let pml4i = (page_index >> 27) & MASK;
@@ -43,12 +45,17 @@ pub unsafe fn free_page(page_index: usize, pml4: *mut usize) {
         if pte & 1 == 0 {
             panic!("Attempted to free a linear address that wasn't allocated");
         } else {
-            let page = (pte & PHY_PAGE_MASK) >> 12;
-            phy::free_page(page);
+            let page = pte & PHY_PAGE_MASK;
             *pt.offset(pti as isize) = 0;
+            // TODO: if not current CR3, INVLPG page
+            page
         }
+    }
+}
 
-        // TODO: if not current CR3, INVLPG page
+pub unsafe fn free_page(page_index: usize, pml4: *mut usize) {
+    unsafe {
+        phy::free_page(remove_page(page_index, pml4) >> 12);
     }
 }
 
@@ -60,7 +67,7 @@ pub unsafe fn allocate_page(
 ) {
     unsafe {
         let entry = |ptr: *mut usize| {
-            let addr = phy::allocate_zeroed_page(PageUse::Used) << 12;
+            let addr = phy::allocate_page_addr(true).unwrap();
             *ptr = addr | entry_mask;
             addr | TO_HIGH_MASK
         };
@@ -217,13 +224,13 @@ pub unsafe fn get_lin_hole(pages: usize, pml4: *const usize, kernel: bool) -> us
 
 pub unsafe fn clone_uefi(opml4: *const usize) -> usize {
     unsafe {
-        let npml4 = phy::allocate_zeroed_addr(PageUse::Used) as *mut usize;
+        let npml4 = phy::allocate_page_addr(true).unwrap() as *mut usize;
 
         for pml4i in 0..256 {
             let opml4e = *opml4.offset(pml4i as isize);
 
             if opml4e & 1 != 0 {
-                let npdpt = phy::allocate_zeroed_addr(PageUse::Used) as *mut usize;
+                let npdpt = phy::allocate_page_addr(true).unwrap() as *mut usize;
                 *npml4.offset(pml4i as isize) = (npdpt as usize) | 3;
 
                 let opdpt = ((opml4e & PHY_PAGE_MASK) | TO_HIGH_MASK) as *const usize;
@@ -237,7 +244,7 @@ pub unsafe fn clone_uefi(opml4: *const usize) -> usize {
                             *npdpt.offset(pdpti as isize) =
                                 (opdpte & PHY_PAGE_MASK & !0x3FFF_FFFF) | 0b1000_0011;
                         } else {
-                            let npd = phy::allocate_zeroed_addr(PageUse::Used) as *mut usize;
+                            let npd = phy::allocate_page_addr(true).unwrap() as *mut usize;
                             *npdpt.offset(pdpti as isize) = (npd as usize) | 3;
 
                             let opd = ((opdpte & PHY_PAGE_MASK) | TO_HIGH_MASK) as *const usize;
@@ -252,7 +259,7 @@ pub unsafe fn clone_uefi(opml4: *const usize) -> usize {
                                             (opde & PHY_PAGE_MASK & !0x1F_FFFF) | 0b1000_0011;
                                     } else {
                                         let npt =
-                                            phy::allocate_zeroed_addr(PageUse::Used) as *mut usize;
+                                            phy::allocate_page_addr(true).unwrap() as *mut usize;
                                         *npd.offset(pdi as isize) = (npt as usize) | 3;
 
                                         let opt =

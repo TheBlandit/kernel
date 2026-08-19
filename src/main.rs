@@ -3,6 +3,7 @@
 #![feature(abi_x86_interrupt)]
 #![feature(negative_impls)]
 
+mod devices;
 mod int;
 mod mem;
 mod output;
@@ -87,11 +88,11 @@ pub extern "C" fn main(handle: Handle, table: *mut SystemTable) -> Status {
 
                     if !status.is_error() {
                         crate::output::raw_println(b"UEFI exit success");
-                        break mem::paging::init::UEFIMemData {
-                            buffer_size: memory_map_size,
+                        break mem::paging::init::UEFIMemData::new(
+                            memory_map_size,
                             desc_size,
-                            ptr: memory_map,
-                        };
+                            memory_map,
+                        );
                     }
                 }
 

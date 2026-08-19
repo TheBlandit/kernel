@@ -141,7 +141,7 @@ struct BufferEntry<const S: usize> {
 impl<const S: usize> BufferEntry<S> {
     fn alloc(&mut self) -> Option<*mut u8> {
         unsafe {
-            if self.usage == (1u64 << S).wrapping_sub(1) {
+            if self.usage == 1u64.wrapping_shl(S as u32).wrapping_sub(1) {
                 return None;
             }
 
@@ -158,15 +158,15 @@ impl<const S: usize> BufferEntry<S> {
     }
 
     fn dealloc(&mut self, ptr: *const u8) -> bool {
-        let diff = (self.ptr as usize) - (ptr as usize);
-        if diff >= 4096 {
+        let byte_offset = (ptr as usize).wrapping_sub(self.ptr as usize);
+        if byte_offset >= 4096 {
             return false;
         }
 
-        let i = diff / (4096 / S);
-        debug_assert!(i < S);
-        debug_assert!((self.usage >> i) & 1 == 1);
-        self.usage &= !(1 << i);
+        let offset = byte_offset / (4096 / S);
+        debug_assert!(offset < S);
+        debug_assert!((self.usage >> offset) & 1 == 1);
+        self.usage &= !(1 << offset);
         true
     }
 
